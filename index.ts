@@ -2,15 +2,55 @@ import WebSocket from "ws";
 const DerivAPI = require("@deriv/deriv-api/dist/DerivAPI");
 
 const app_id = 65687;
+let maxStake = 0;
 const symbol = "R_10";
-const connection = new WebSocket(
+
+// const connection = new WebSocket(
+//     "wss://ws.derivws.com/websockets/v3?app_id=65687"
+//   );
+function createWebSocket() {
+  const connection = new WebSocket(
     "wss://ws.derivws.com/websockets/v3?app_id=65687"
   );
 
-  const api = new DerivAPI({ connection });
-  const basic = api.basic;
-  const apiToken = process.env.api_token;
-  await basic.authorize(apiToken)
+  connection.onopen = () => {
+    console.log("WebSocket connection established.");
+  };
+
+  connection.onmessage = (message) => {
+    console.log("Received message:", message.data);
+  };
+
+  connection.onclose = (event) => {
+    console.log(`WebSocket closed: ${event.reason}`);
+    console.log("Reconnecting in 3 seconds...");
+    setTimeout(() => {
+      createWebSocket();
+    }, 3000);
+  };
+
+  connection.onerror = (error) => {
+    console.error("WebSocket error:", error);
+  };
+
+  return connection;
+}
+const connection = createWebSocket();
+
+function sendHeartbeat() {
+  console.log(`Sending heartbeat: ${connection.readyState}`);
+  if (connection.readyState === WebSocket.OPEN) {
+    connection.send(JSON.stringify({ ping: "keep-alive" }));
+  }
+}
+
+setInterval(sendHeartbeat, 30000);
+
+const api = new DerivAPI({ connection });
+const basic = api.basic;
+const apiToken = process.env.api_token;
+await basic.authorize(apiToken);
+
 const wsHistory = new WebSocket(
   `wss://ws.binaryws.com/websockets/v3?app_id=${app_id}`
 );
@@ -71,8 +111,8 @@ async function SampleOpenTradeUnderDigit({
   stake: number;
   digit: number;
 }) {
-;
   console.log("Opening trade...", stake);
+  if (maxStake < stake) maxStake = stake;
 
   const proposal = await basic.proposal({
     amount: stake,
@@ -125,12 +165,14 @@ wsHistory.on("message", (message) => {
     console.log(`Tick received: ${data.tick.symbol}`);
     console.log(`Price: ${data.tick.quote}`);
     console.log(`Epoch: ${data.tick.epoch}`);
+    console.log(`Max stake:${maxStake}`);
 
     const lastDigit = getLastDigit(data.tick.quote);
     if (lastDigit >= 2) count++;
     else count = 0;
     console.log(`Count: ${count}`);
-    if (count > 2) { // change here
+    if (count > 39) {
+      // change here
       if (lastDigit >= 2) lastPrice = lastPrice * 2;
       else lastPrice = 1;
       SampleOpenTradeUnderDigit({
