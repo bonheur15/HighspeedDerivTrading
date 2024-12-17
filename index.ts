@@ -2,7 +2,7 @@ import WebSocket from "ws";
 const DerivAPI = require("@deriv/deriv-api/dist/DerivAPI");
 
 const app_id = 65687;
-let maxStake = 0;
+// let maxStake = 0;
 const symbol = "R_10";
 
 // const connection = new WebSocket(
@@ -104,35 +104,35 @@ const wsHistory = new WebSocket(
 //   return data.proposal_open_contract.status === "won";
 // }
 
-async function SampleOpenTradeUnderDigit({
-  stake,
-  digit,
-}: {
-  stake: number;
-  digit: number;
-}) {
-  console.log("Opening trade...", stake);
-  if (maxStake < stake) maxStake = stake;
+// async function SampleOpenTradeUnderDigit({
+//   stake,
+//   digit,
+// }: {
+//   stake: number;
+//   digit: number;
+// }) {
+//   console.log("Opening trade...", stake);
+//   if (maxStake < stake) maxStake = stake;
 
-  const proposal = await basic.proposal({
-    amount: stake,
-    basis: "stake",
-    contract_type: "DIGITUNDER",
-    currency: "USD",
-    duration: 1,
-    duration_unit: "t",
-    symbol: "R_10",
-    barrier: digit,
-  });
-  console.log(proposal);
+//   const proposal = await basic.proposal({
+//     amount: stake,
+//     basis: "stake",
+//     contract_type: "DIGITUNDER",
+//     currency: "USD",
+//     duration: 1,
+//     duration_unit: "t",
+//     symbol: "R_10",
+//     barrier: digit,
+//   });
+//   console.log(proposal);
 
-  const buyResponse = await basic.buy({
-    buy: proposal.proposal.id,
-    price: stake,
-  });
-  console.log(buyResponse.buy);
-  //   const contractId = buyResponse.buy.contract_id;
-}
+//   const buyResponse = await basic.buy({
+//     buy: proposal.proposal.id,
+//     price: stake,
+//   });
+//   console.log(buyResponse.buy);
+//   //   const contractId = buyResponse.buy.contract_id;
+// }
 
 function getLastDigit(input: number) {
   const str = input.toString();
@@ -154,34 +154,82 @@ wsHistory.on("open", () => {
   );
 });
 
-let count = 0;
-let lastPrice = 1;
+async function SampleOpenTradeRiseFall({
+  stake,
+  type,
+}: {
+  stake: number;
+  type: "CALL" | "PUT";
+}) {
+  console.log("Opening trade...", stake);
+
+  const proposal = await basic.proposal({
+    amount: stake,
+    basis: "stake",
+    contract_type: type, // Use CALL for Rise or PUT for Fall
+    currency: "USD",
+    duration: 1,
+    duration_unit: "t",
+    symbol: "R_10",
+  });
+
+  //   console.log(proposal);
+
+  const buyResponse = await basic.buy({
+    buy: proposal.proposal.id,
+    price: stake,
+  });
+
+  //   console.log(buyResponse.buy);
+}
+
+let lastPrice = 0;
+let counter = 0;
+
+let delayTick = false;
+let consecutiveLoss = 0;
+let currentStake = 1;
+const limiter = 4;
 wsHistory.on("message", (message) => {
   const data = JSON.parse(message as unknown as string) as {
     tick: { symbol: string; quote: number; epoch: number };
     error: { message: string };
   };
   if (data.tick) {
-    console.log(`Tick received: ${data.tick.symbol}`);
-    console.log(`Price: ${data.tick.quote}`);
-    console.log(`Epoch: ${data.tick.epoch}`);
-    console.log(`Max stake:${maxStake}`);
+    if (!delayTick) {
+      // console.log(`Tick received: ${data.tick.symbol}`);
+      console.log(`Price: ${data.tick.quote}`);
+      // console.log(`Epoch: ${data.tick.epoch}`);
 
-    const lastDigit = getLastDigit(data.tick.quote);
-    if (lastDigit >= 2) count++;
-    else count = 0;
-    console.log(`Count: ${count}`);
-    if (count > 39) {
-      // change here
-      if (lastDigit >= 2) lastPrice = lastPrice * 2;
-      else lastPrice = 1;
-      SampleOpenTradeUnderDigit({
-        stake: lastPrice,
-        digit: 2,
-      });
-      console.log("Open trade", lastPrice, lastDigit);
+      if (lastPrice !== 0) {
+        if (lastPrice < data.tick.quote) {
+          console.log(`won${consecutiveLoss}`, data.tick.quote, lastPrice);
+          if (consecutiveLoss > limiter ) {
+            currentStake = 1;
+          }
+          consecutiveLoss = 0;
+        } else {
+          console.log(`lost${consecutiveLoss}`, data.tick.quote, lastPrice);
+          if (consecutiveLoss > limiter ) {
+            currentStake = currentStake * 2;
+          }
+          consecutiveLoss++;
+        }
+      }
+
+      //   if (counter === 4) process.exit(0);
+      if (consecutiveLoss > limiter) {
+        SampleOpenTradeRiseFall({
+          stake: currentStake,
+          type: "CALL",
+        });
+        counter++;
+      }
+      delayTick = true;
     } else {
-      lastPrice = 1;
+      delayTick = false;
+      console.log("Delay tick");
+      lastPrice = data.tick.quote;
     }
   } else if (data.error) {
     console.error(`Error: ${data.error.message}`);
