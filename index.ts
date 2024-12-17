@@ -3,7 +3,7 @@ const DerivAPI = require("@deriv/deriv-api/dist/DerivAPI");
 
 const app_id = 65687;
 // let maxStake = 0;
-const symbol = "R_10";
+const symbol = "R_50";
 
 // const connection = new WebSocket(
 //     "wss://ws.derivws.com/websockets/v3?app_id=65687"
@@ -170,7 +170,7 @@ async function SampleOpenTradeRiseFall({
     currency: "USD",
     duration: 1,
     duration_unit: "t",
-    symbol: "R_10",
+    symbol: symbol,
   });
 
   //   console.log(proposal);
@@ -189,7 +189,7 @@ let counter = 0;
 let delayTick = false;
 let consecutiveLoss = 0;
 let currentStake = 1;
-const limiter = 4;
+const limiter = 2;
 wsHistory.on("message", (message) => {
   const data = JSON.parse(message as unknown as string) as {
     tick: { symbol: string; quote: number; epoch: number };
@@ -197,32 +197,30 @@ wsHistory.on("message", (message) => {
   };
   if (data.tick) {
     if (!delayTick) {
-      // console.log(`Tick received: ${data.tick.symbol}`);
       console.log(`Price: ${data.tick.quote}`);
-      // console.log(`Epoch: ${data.tick.epoch}`);
-
       if (lastPrice !== 0) {
         if (lastPrice < data.tick.quote) {
           console.log(`won${consecutiveLoss}`, data.tick.quote, lastPrice);
-          if (consecutiveLoss > limiter ) {
+          if (consecutiveLoss > limiter) {
             currentStake = 1;
           }
           consecutiveLoss = 0;
         } else {
           console.log(`lost${consecutiveLoss}`, data.tick.quote, lastPrice);
-          if (consecutiveLoss > limiter ) {
+          if (consecutiveLoss > limiter) {
             currentStake = currentStake * 2;
           }
           consecutiveLoss++;
         }
       }
-
-      //   if (counter === 4) process.exit(0);
       if (consecutiveLoss > limiter) {
+        // if (consecutiveLoss < 4) {
+       
+        // }
         SampleOpenTradeRiseFall({
-          stake: currentStake,
-          type: "CALL",
-        });
+            stake: currentStake,
+            type: "CALL",
+          });
         counter++;
       }
       delayTick = true;
