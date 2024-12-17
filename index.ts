@@ -188,8 +188,20 @@ let counter = 0;
 
 let delayTick = false;
 let consecutiveLoss = 0;
-let currentStake = 1;
+
+
+
+const lossToHandle = 2;
 const limiter = 2;
+const multiplier = 2.1;
+const maxStake = 6;
+const initialStake = 0.35;
+
+
+
+
+let currentStake =  initialStake;
+let stare = false;
 wsHistory.on("message", (message) => {
   const data = JSON.parse(message as unknown as string) as {
     tick: { symbol: string; quote: number; epoch: number };
@@ -202,25 +214,35 @@ wsHistory.on("message", (message) => {
         if (lastPrice < data.tick.quote) {
           console.log(`won${consecutiveLoss}`, data.tick.quote, lastPrice);
           if (consecutiveLoss > limiter) {
-            currentStake = 1;
+           if(!stare)  currentStake =  initialStake;
           }
           consecutiveLoss = 0;
         } else {
           console.log(`lost${consecutiveLoss}`, data.tick.quote, lastPrice);
           if (consecutiveLoss > limiter) {
-            currentStake = currentStake * 2;
+            if (!stare) {
+                currentStake = currentStake * multiplier;
+                if(currentStake > maxStake) currentStake =  initialStake;
+              }
           }
           consecutiveLoss++;
         }
       }
       if (consecutiveLoss > limiter) {
-        // if (consecutiveLoss < 4) {
-       
-        // }
-        SampleOpenTradeRiseFall({
-            stake: currentStake,
+        if (consecutiveLoss <= limiter+lossToHandle) {
+            stare = false;
+          SampleOpenTradeRiseFall({
+            stake: Number(currentStake.toFixed(2)),
             type: "CALL",
           });
+        
+        }
+        else{
+            stare = true;
+            console.log("Stare");
+            consecutiveLoss = 0;
+        }
+
         counter++;
       }
       delayTick = true;
